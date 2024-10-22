@@ -16,16 +16,16 @@ const NUM_REGISTERS: u8 = 9;
  * COND = 9
 */
 
-const PC_REG: u8 = 8;
-const PC_START: u16 = 0x3000;
+pub const PC_REG: u8 = 8;
+pub const PC_START: u16 = 0x3000;
 
-enum ConditionFlag {
+pub enum ConditionFlag {
     POS = 1,
     NEG = 2,
     ZERO = 4,
 }
 
-struct Registers {
+pub struct Registers {
     pub regs: HashMap<u8, u16>,
 }
 

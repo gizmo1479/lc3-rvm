@@ -16,3 +16,9 @@ pub enum OpCode {
     OpLea,    /* load effective address */
     OpTrap,   /* execute trap */
 }
+
+impl OpCode {
+    pub fn from_u16(instruction: &u16) -> Option<Self> {
+        None
+    }
+}
