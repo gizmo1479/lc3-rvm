@@ -27,7 +27,7 @@ fn main() {
 
     let mut addr = base_addr as usize;
     loop {
-        match f.read_u16::<BigEndian>() {
+        match f_reader.read_u16::<BigEndian>() {
             Ok(instruction) => {
                 vm.write_memory(addr, instruction);
                 addr += 1;
