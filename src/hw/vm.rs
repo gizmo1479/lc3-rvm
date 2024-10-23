@@ -1,6 +1,7 @@
 use crate::hw::instruction;
 use crate::hw::register;
 
+use super::instruction::sign_extend;
 use super::instruction::OpCode;
 use super::register::PC_REG;
 
@@ -81,7 +82,13 @@ impl VM {
 
         // check if in immediate or register mode
         if (full_instruction >> 5) & 0x1 == 1 {
-            todo!()
+            let imm5 = (full_instruction & 0x1f) as u16;
+
+            // second source operand obtained by sign-extending imm5
+            let val: u16 = self.registers.get_val(source_reg_1) + sign_extend(imm5, 5);
+
+            // update register
+            self.registers.update_register(dest_reg, val);
         } else {
             let source_reg_2: u8 = (full_instruction & 0x7) as u8;
 

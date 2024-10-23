@@ -19,6 +19,16 @@ pub enum OpCode {
 
 impl OpCode {
     pub fn from_u16(instruction: &u16) -> Option<Self> {
-        None
+        todo!()
     }
+}
+
+pub fn sign_extend(num: u16, bit_count: u8) -> u16 {
+    let mut ret = num;
+    // if num is negative, need to pad with zeroes
+    if ((num >> (bit_count - 1)) & 1) != 0 {
+        ret |= 0xffff >> bit_count;
+    }
+    // if num is positive, it will already be padded with zeroes
+    ret
 }
