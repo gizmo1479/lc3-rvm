@@ -18,6 +18,7 @@ const NUM_REGISTERS: u8 = 9;
 
 pub const PC_REG: u8 = 8;
 pub const PC_START: u16 = 0x3000;
+pub const COND_REG: u8 = 9;
 
 pub enum ConditionFlag {
     POS = 1,
