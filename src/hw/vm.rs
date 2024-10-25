@@ -1,8 +1,16 @@
+use std::io;
+use std::io::Write;
+use std::os::unix::process;
+use std::process;
+use std::process::exit;
+
 use crate::hw::instruction;
 use crate::hw::register;
 
 use super::instruction::sign_extend;
 use super::instruction::OpCode;
+use super::register::ConditionFlag;
+use super::register::COND_REG;
 use super::register::PC_REG;
 
 const MEMORY_MAX: u16 = u16::MAX;
@@ -24,7 +32,7 @@ impl VM {
         self.memory[addr_to_write] = value;
     }
 
-    pub fn read_memory(&mut self, addr_to_read: usize) -> Option<u16> {
+    pub fn read_memory(&self, addr_to_read: usize) -> Option<u16> {
         if addr_to_read >= MEMORY_MAX as usize {
             return None;
         }
@@ -104,63 +112,217 @@ impl VM {
         self.registers.update_cond_register(dest_reg);
     }
 
+    // AND instruction layout
+    // 15 - 12: 0101, 11-9: DR, 8-6: SR1, 5-3: 0, 2-0: SR2
+    // 15 - 12: 0201, 11-9: DR, 8-6: SR1, 5: 1, 4-0: imm5
     fn and(&mut self, full_instruction: u16) {
-        todo!()
+        let dest_reg: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        let source_reg_1: u8 = ((full_instruction >> 6) & 0x7) as u8;
+
+        // check if in immediate or register mode
+        if (full_instruction >> 5) & 0x1 == 1 {
+            let imm5 = (full_instruction & 0x1f) as u16;
+
+            // second source operand obtained by sign-extending imm5
+            let val: u16 = self.registers.get_val(source_reg_1) & sign_extend(imm5, 5);
+
+            // update register
+            self.registers.update_register(dest_reg, val);
+        } else {
+            let source_reg_2: u8 = (full_instruction & 0x7) as u8;
+
+            let val: u16 =
+                self.registers.get_val(source_reg_1) & self.registers.get_val(source_reg_2);
+
+            // update register
+            self.registers.update_register(dest_reg, val);
+        }
+
+        // AND sets condition register flags
+        self.registers.update_cond_register(dest_reg);
     }
 
+    // BR instruction layout
+    // 15 - 12: 0000, 11: n, 10: z, 9: p, 8-0: PC offset9
+    // For 11-9: if bit set is set then test cond, if any cond code is set
+    // branch to location specifie dby adding sign-extended PCoffset9 and PC
     fn br(&mut self, full_instruction: u16) {
-        todo!()
+        let conds = (full_instruction >> 9) & 0x7;
+        if (conds & self.registers.get_val(COND_REG)) != 0 {
+            let pcoff = sign_extend(full_instruction & 0x1ff, 9);
+            let new_pc = self.registers.get_val(PC_REG) + pcoff;
+            self.registers.update_register(PC_REG, new_pc)
+        }
     }
 
+    // JMP
+    // 15-12: 1100, 11-9: 000, 8-6: BaseR(PC)
+    // RET, 8-6: 111, if this then jmp to R7
     fn jmp(&mut self, full_instruction: u16) {
-        todo!()
+        let to_jmp = (full_instruction >> 6) & 0x7;
+        // 111 -> 7, which corresponds to R7
+        self.registers
+            .update_register(PC_REG, self.registers.get_val(to_jmp as u8))
     }
 
+    // JSR (Jump Sub routine)
+    // 15-12: 0100, 11: 1, 10-0: PCoffset11
+    // JSRR
+    // 15-12: 0100, 11-9: 000, 8-6: BaseR, 5-0: 0
     fn jsr(&mut self, full_instruction: u16) {
-        todo!()
+        // save PC in R7
+        self.registers
+            .update_register(7, self.registers.get_val(PC_REG));
+        if ((full_instruction >> 11) & 1) == 1 {
+            // JSR - jump to PC + sign-extend(bits 10-0);
+            let new_pc = self.registers.get_val(PC_REG) + sign_extend(full_instruction & 0x7FF, 11);
+            self.registers.update_register(PC_REG, new_pc);
+        } else {
+            // JSRR - jump to base reg
+            self.registers.update_register(
+                PC_REG,
+                self.registers
+                    .get_val(((full_instruction >> 6) & 0x7) as u8),
+            );
+        }
     }
 
+    // LD (Load)
+    // 15-12: 0010, 11-9: DR, 8-0: pcoffset9
+    // Contents of memory loaded into DR and cond codes are set
+    // Address of memory is sign_extend(Pcoffset9) + 16
     fn ld(&mut self, full_instruction: u16) {
-        todo!()
+        // add as usize to avoid overflow, so we can detect if mem loc is out of bounds
+        let mem_addr = sign_extend(full_instruction & 0x1ff, 9) as usize
+            + self.registers.get_val(PC_REG) as usize;
+        let dr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        self.registers
+            .update_register(dr, self.read_memory(mem_addr).unwrap());
+        self.registers.update_cond_register(dr)
     }
 
+    // LDI (Load Indirect)
+    // 15-12: 1010, 11-9: DR, 8-0: PCOffset9
+    // DR = mem[mem[PC + sign_ext(PCOffset9)]]
     fn ldi(&mut self, full_instruction: u16) {
-        todo!()
+        let mem_addr_1 = sign_extend(full_instruction & 0x1ff, 9) as usize
+            + self.registers.get_val(PC_REG) as usize;
+        let mem_addr_2 = self.read_memory(mem_addr_1).unwrap() as usize;
+        let dr = ((full_instruction >> 9) & 0x7) as u8;
+        self.registers
+            .update_register(dr, self.read_memory(mem_addr_2).unwrap());
+        self.registers.update_cond_register(dr)
     }
 
+    // LDR (Load Base+Offset)
+    // 15-12: 0110, 11-9: DR, 8-6: BaseR, 5-0: Offset6
+    // DR = mem[BaseR + sign_ext(Offset6)], set cond codes
     fn ldr(&mut self, full_instruction: u16) {
-        todo!()
+        let base_r = ((full_instruction >> 6) & 0x7) as u8;
+        // add as usize to avoid overflow, so we can detect if mem loc is out of bounds
+        let mem_addr = sign_extend(full_instruction & 0x3f, 6) as usize
+            + self.registers.get_val(base_r) as usize;
+        let dr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        self.registers
+            .update_register(dr, self.read_memory(mem_addr).unwrap());
+        self.registers.update_cond_register(dr)
     }
 
+    // LEA (Load Effective Address)
+    // 15-12: 1110, 11-9: DR, 8-0: PCoffset9
+    // DR = PC + sign_ext(PCOffset9), set cond codes
     fn lea(&mut self, full_instruction: u16) {
-        todo!()
+        // TODO: what do we do about out of bounds here?
+        let new_addr = sign_extend(full_instruction & 0x1ff, 9) + self.registers.get_val(PC_REG);
+        let dr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        self.registers.update_register(dr, new_addr);
+        self.registers.update_cond_register(dr)
     }
 
+    // NOT
+    // 15-12: 1001, 11-9: dr, 8-6: SR, 5-0: 1
+    // bitwise complement as 2's complement int, set cond codes
     fn not(&mut self, full_instruction: u16) {
-        todo!()
+        let dr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        let sr: u8 = ((full_instruction >> 6) & 0x7) as u8;
+        self.registers
+            .update_register(dr, !(self.registers.get_val(sr)));
+        self.registers.update_cond_register(dr)
     }
 
-    fn res(&mut self, full_instruction: u16) {
-        todo!()
+    fn res(&mut self, _full_instruction: u16) {
+        panic!("ERROR: unused opcode for RES")
     }
 
+    // RTI command is only available for a processor "Supervisor mode"
     fn rti(&mut self, full_instruction: u16) {
-        todo!()
+        panic!("ERROR: must be in Supervisor mode for RTI")
     }
 
+    // ST (Store)
+    // 15-12: 0011, 11-9: SR, 8-0: PCOffset9
+    // mem[PC + sign_ext(PCOffset9)] = SR
     fn st(&mut self, full_instruction: u16) {
-        todo!()
+        let sr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        // add as usize to avoid overflow, so we can detect if mem loc is out of bounds
+        let new_addr = sign_extend(full_instruction & 0x1ff, 9) as usize
+            + self.registers.get_val(PC_REG) as usize;
+        self.write_memory(new_addr, self.registers.get_val(sr))
     }
 
+    // STI (Store Indirect)
+    // 15-12: 1011, 11-9: SR, 8-0: PCOffset9
+    // mem[mem[PC + sign_ext(PCOffset9)]] = SR;
     fn sti(&mut self, full_instruction: u16) {
-        todo!()
+        let sr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        // add as usize to avoid overflow, so we can detect if mem loc is out of bounds
+        let mem_addr_1 = sign_extend(full_instruction & 0x1ff, 9) as usize
+            + self.registers.get_val(PC_REG) as usize;
+        self.write_memory(
+            self.read_memory(mem_addr_1).unwrap() as usize,
+            self.registers.get_val(sr),
+        )
     }
 
+    // STR (Store Base + Offset)
+    // 15-12: 1011, 11-9: SR, 8-6: BaseR, 5-0: Offset6
+    // mem[BaseR + sign_ext(Offset6)] = SR;
     fn str(&mut self, full_instruction: u16) {
-        todo!()
+        let sr: u8 = ((full_instruction >> 9) & 0x7) as u8;
+        let base_r: u8 = ((full_instruction >> 6) & 0x7) as u8;
+        // add as usize to avoid overflow, so we can detect if mem loc is out of bounds
+        let mem_addr = sign_extend(full_instruction & 0x3f, 6) as usize
+            + self.registers.get_val(base_r) as usize;
+        self.write_memory(mem_addr, self.registers.get_val(sr))
     }
 
+    // TRAP (System Call)
+    // 15-12: 1111, 11-8: 0000, 7-0: trapvect8
+    // Mem locations x0000 -> 0x00FF are available to contain
+    // starting addrs for system calls specified by their trap vectors
     fn trap(&mut self, full_instruction: u16) {
-        todo!()
+        // save PC
+        self.registers
+            .update_register(7, self.registers.get_val(PC_REG));
+        let mem_loc = full_instruction & 0xFF;
+        match mem_loc {
+            // GETC
+            0x20 => todo!(),
+            // OUT
+            0x21 => todo!(),
+            // PUTS
+            0x22 => todo!(),
+            // IN
+            0x23 => todo!(),
+            // PUTSP
+            0x24 => todo!(),
+            // HALT
+            0x25 => {
+                println!("HALT detected");
+                io::stdout().flush().expect("Failed to flush STDOUT");
+                exit(1);
+            }
+            _ => panic!("ERROR: TRAP NOT FOUND"),
+        }
     }
 }
