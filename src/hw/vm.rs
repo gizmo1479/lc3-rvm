@@ -330,7 +330,7 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hw::register::ConditionFlag;
+    use crate::hw::register::{ConditionFlag, PC_START};
 
     #[test]
     fn test_add() {
@@ -341,7 +341,7 @@ mod tests {
         assert_eq!(vm.registers.get_val(0), 0);
         assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::ZERO as u16);
 
-        // test imm5 - ADD R2 R3 31
+        // ADD R2 R3 31
         // instr: 0b0001_010_011_1_11111
         vm.add(0b0001010011111111);
         // sign_ext(31) => 65535
@@ -349,9 +349,71 @@ mod tests {
         // COND_REG negative as "11111" is negative in signed two's complemen
         assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::NEG as u16);
 
-        // test register - ADD R0 R2 R4
+        // ADD R0 R2 R4
         // instr: 0b0001_000_010_000_100
         vm.add(0b0001000010000100);
         assert_eq!(vm.registers.get_val(0), 65535);
+    }
+
+    #[test]
+    fn test_and() {
+        let mut vm = VM::new();
+
+        // ADD R0 R0 1
+        vm.add(0b0001000000100001);
+        assert_eq!(vm.registers.get_val(0), 1);
+        // ADD R1 R1 2
+        vm.add(0b0001001001100011);
+        assert_eq!(vm.registers.get_val(1), 3);
+
+        // AND R0 R0 R1
+        // instr: 0b0101_000_000_000_001
+        vm.and(0b0101000000000001);
+        assert_eq!(vm.registers.get_val(0), 1);
+        assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::POS as u16);
+
+        // AND R0 R0 0
+        // instr: 0b0101_000_000_1_00000
+        vm.and(0b0101000000100000);
+        assert_eq!(vm.registers.get_val(0), 0);
+        assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::ZERO as u16);
+    }
+
+    #[test]
+    fn test_br() {
+        let mut vm = VM::new();
+
+        // ADD R0 R0 1 - set P cond flag
+        vm.add(0b0001000000100001);
+        assert_eq!(vm.registers.get_val(0), 1);
+
+        // BR 255 - doesn't branch
+        // instr: 0b0000_1_0_0_011111111
+        vm.br(0b0000100011111111);
+        assert_eq!(vm.registers.get_val(PC_REG), PC_START);
+        // BR 255 - doesn't branch
+        // instr: 0b0000_0_1_0_011111111
+        vm.br(0b0000010011111111);
+        assert_eq!(vm.registers.get_val(PC_REG), PC_START);
+        // BR 255 - branches
+        // instr: 0b0000_0_0_1_011111111
+        vm.br(0b0000001011111111);
+        assert_eq!(vm.registers.get_val(PC_REG), 255 + PC_START);
+    }
+
+    #[test]
+    fn test_jmp() {
+        let mut vm = VM::new();
+        // JMP R1
+        // instr: 0b1100_000_001_000000
+        vm.jmp(0b1100000001000000);
+        assert_eq!(vm.registers.get_val(PC_REG), 0);
+
+        // ADD R7 R7 3
+        vm.add(0b0001111111100011);
+        // JMP RET
+        // instr: 0b1100_000_111_000000
+        vm.jmp(0b1100000111000000);
+        assert_eq!(vm.registers.get_val(PC_REG), 3);
     }
 }
