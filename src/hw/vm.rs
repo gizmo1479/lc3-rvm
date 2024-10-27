@@ -1,15 +1,11 @@
 use std::io;
 use std::io::Write;
-use std::os::unix::process;
-use std::process;
 use std::process::exit;
 
-use crate::hw::instruction;
 use crate::hw::register;
 
 use super::instruction::sign_extend;
 use super::instruction::OpCode;
-use super::register::ConditionFlag;
 use super::register::COND_REG;
 use super::register::PC_REG;
 
@@ -21,6 +17,7 @@ pub struct VM {
 
 impl VM {
     pub fn new() -> Self {
+        println!("INITTTTT");
         VM {
             memory: [0; MEMORY_MAX as usize],
             registers: register::Registers::new(),
@@ -85,12 +82,15 @@ impl VM {
     // 15 - 12: 0001, 11-9: DR, 8-6: SR1, 5-3: 0, 2-0: SR2
     // 15 - 12: 0001, 11-9: DR, 8-6: SR1, 5: 1, 4-0: imm5
     fn add(&mut self, full_instruction: u16) {
+        println!("ADD INSTRUCTION");
         let dest_reg: u8 = ((full_instruction >> 9) & 0x7) as u8;
         let source_reg_1: u8 = ((full_instruction >> 6) & 0x7) as u8;
 
         // check if in immediate or register mode
         if (full_instruction >> 5) & 0x1 == 1 {
             let imm5 = (full_instruction & 0x1f) as u16;
+            println!("IMM5: {:?}", imm5);
+            println!("SIGNEXT IMM5: {:?}", sign_extend(imm5, 5));
 
             // second source operand obtained by sign-extending imm5
             let val: u16 = self.registers.get_val(source_reg_1) + sign_extend(imm5, 5);
@@ -114,7 +114,7 @@ impl VM {
 
     // AND instruction layout
     // 15 - 12: 0101, 11-9: DR, 8-6: SR1, 5-3: 0, 2-0: SR2
-    // 15 - 12: 0201, 11-9: DR, 8-6: SR1, 5: 1, 4-0: imm5
+    // 15 - 12: 0101, 11-9: DR, 8-6: SR1, 5: 1, 4-0: imm5
     fn and(&mut self, full_instruction: u16) {
         let dest_reg: u8 = ((full_instruction >> 9) & 0x7) as u8;
         let source_reg_1: u8 = ((full_instruction >> 6) & 0x7) as u8;
@@ -255,7 +255,7 @@ impl VM {
     }
 
     // RTI command is only available for a processor "Supervisor mode"
-    fn rti(&mut self, full_instruction: u16) {
+    fn rti(&mut self, _full_instruction: u16) {
         panic!("ERROR: must be in Supervisor mode for RTI")
     }
 
@@ -324,5 +324,34 @@ impl VM {
             }
             _ => panic!("ERROR: TRAP NOT FOUND"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hw::register::ConditionFlag;
+
+    #[test]
+    fn test_add() {
+        let mut vm = VM::new();
+
+        // add 0 to 0: COND_REG should have Zero set
+        vm.add(0b0001000000000000);
+        assert_eq!(vm.registers.get_val(0), 0);
+        assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::ZERO as u16);
+
+        // test imm5 - ADD R2 R3 31
+        // instr: 0b0001_010_011_1_11111
+        vm.add(0b0001010011111111);
+        // sign_ext(31) => 65535
+        assert_eq!(vm.registers.get_val(2), 65535);
+        // COND_REG negative as "11111" is negative in signed two's complemen
+        assert_eq!(vm.registers.get_val(COND_REG), ConditionFlag::NEG as u16);
+
+        // test register - ADD R0 R2 R4
+        // instr: 0b0001_000_010_000_100
+        vm.add(0b0001000010000100);
+        assert_eq!(vm.registers.get_val(0), 65535);
     }
 }

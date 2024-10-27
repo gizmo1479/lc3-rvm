@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 // was considering using an enum but it is too cumbersome to go between
 // enums and other types
-const NUM_REGISTERS: u8 = 9;
+const NUM_REGISTERS: u8 = 10;
 /* LC3 Registers
  * R0 = 0
  * R1
@@ -47,6 +47,7 @@ impl Registers {
             panic!("INVALID REGISTER: {:?}", register)
         }
 
+        eprintln!("inserting {:?} into reg: {:?}", value, register);
         self.regs.insert(register, value);
     }
 
@@ -60,10 +61,12 @@ impl Registers {
 
     pub fn update_cond_register(&mut self, register: u8) {
         let val = self.get_val(register);
+        eprintln!("val gotten from reg {:?}: {:?}", register, val);
+        eprintln!("NUM SHIFTED: {:?}", val >> 15);
         match val {
-            0 => self.regs.insert(NUM_REGISTERS, ConditionFlag::ZERO as u16),
-            x if (x >> 15) != 0 => self.regs.insert(NUM_REGISTERS, ConditionFlag::NEG as u16),
-            _ => self.regs.insert(NUM_REGISTERS, ConditionFlag::POS as u16),
+            0 => self.regs.insert(COND_REG, ConditionFlag::ZERO as u16),
+            x if (x >> 15) != 0 => self.regs.insert(COND_REG, ConditionFlag::NEG as u16),
+            _ => self.regs.insert(COND_REG, ConditionFlag::POS as u16),
         };
     }
 }
