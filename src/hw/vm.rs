@@ -362,7 +362,7 @@ mod tests {
         // ADD R0 R0 1
         vm.add(0b0001000000100001);
         assert_eq!(vm.registers.get_val(0), 1);
-        // ADD R1 R1 2
+        // ADD R1 R1 3
         vm.add(0b0001001001100011);
         assert_eq!(vm.registers.get_val(1), 3);
 
@@ -415,5 +415,90 @@ mod tests {
         // instr: 0b1100_000_111_000000
         vm.jmp(0b1100000111000000);
         assert_eq!(vm.registers.get_val(PC_REG), 3);
+    }
+
+    #[test]
+    fn test_jsr() {
+        // JSR (Jump Sub routine)
+        // 15-12: 0100, 11: 1, 10-0: PCoffset11
+        // JSRR
+        // 15-12: 0100, 11-9: 000, 8-6: BaseR, 5-0: 0
+        let mut vm = VM::new();
+        // JSR 1023
+        // instr: 0b0100_1_01111111111
+        vm.jsr(0b0100101111111111);
+        assert_eq!(vm.registers.get_val(PC_REG), PC_START + 1023);
+
+        // ADD R6 R6 3
+        vm.add(0b0001110110100011);
+        assert_eq!(vm.registers.get_val(6), 3);
+        // JSRR R6
+        // instr: 0b0100_000_110_000000
+        vm.jsr(0b0100000110000000);
+        assert_eq!(vm.registers.get_val(PC_REG), 3);
+    }
+
+    #[test]
+    fn test_ld() {
+        // LD (Load)
+        // 15-12: 0010, 11-9: DR, 8-0: pcoffset9
+        // Contents of memory loaded into DR and cond codes are set
+        // Address of memory is sign_extend(Pcoffset9) + 16
+    }
+
+    #[test]
+    fn test_ldi() {
+        // LDI (Load Indirect)
+        // 15-12: 1010, 11-9: DR, 8-0: PCOffset9
+        // DR = mem[mem[PC + sign_ext(PCOffset9)]]
+    }
+    #[test]
+    fn test_ldr() {
+        // LDR (Load Base+Offset)
+        // 15-12: 0110, 11-9: DR, 8-6: BaseR, 5-0: Offset6
+        // DR = mem[BaseR + sign_ext(Offset6)], set cond codes
+    }
+
+    #[test]
+    fn test_lea() {
+        // LEA
+        // 15-12: 1110, 11-9: DR, 8-0: PCoffset9
+        // DR = PC + sign_ext(PCOffset9), set cond codes
+    }
+
+    #[test]
+    fn test_not() {
+        // NOT
+        // 15-12: 1001, 11-9: dr, 8-6: SR, 5-0: 1
+        // bitwise complement as 2's complement int, set cond codes
+    }
+
+    #[test]
+    fn test_st() {
+        // ST (Store)
+        // 15-12: 0011, 11-9: SR, 8-0: PCOffset9
+        // mem[PC + sign_ext(PCOffset9)] = SR
+    }
+
+    #[test]
+    fn test_sti() {
+        // STI (Store Indirect)
+        // 15-12: 1011, 11-9: SR, 8-0: PCOffset9
+        // mem[mem[PC + sign_ext(PCOffset9)]] = SR;
+    }
+
+    #[test]
+    fn test_str() {
+        // STR (Store Base + Offset)
+        // 15-12: 1011, 11-9: SR, 8-6: BaseR, 5-0: Offset6
+        // mem[BaseR + sign_ext(Offset6)] = SR;
+    }
+
+    #[test]
+    fn test_trap() {
+        // TRAP (System Call)
+        // 15-12: 1111, 11-8: 0000, 7-0: trapvect8
+        // Mem locations x0000 -> 0x00FF are available to contain
+        // starting addrs for system calls specified by their trap vectors
     }
 }
