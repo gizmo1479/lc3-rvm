@@ -419,10 +419,6 @@ mod tests {
 
     #[test]
     fn test_jsr() {
-        // JSR (Jump Sub routine)
-        // 15-12: 0100, 11: 1, 10-0: PCoffset11
-        // JSRR
-        // 15-12: 0100, 11-9: 000, 8-6: BaseR, 5-0: 0
         let mut vm = VM::new();
         // JSR 1023
         // instr: 0b0100_1_01111111111
@@ -439,24 +435,37 @@ mod tests {
     }
 
     #[test]
-    fn test_ld() {
-        // LD (Load)
-        // 15-12: 0010, 11-9: DR, 8-0: pcoffset9
-        // Contents of memory loaded into DR and cond codes are set
-        // Address of memory is sign_extend(Pcoffset9) + 16
+    fn test_ld_st() {
+        let mut vm = VM::new();
+        // ADD R6 R6 3
+        vm.add(0b0001110110100011);
+        assert_eq!(vm.registers.get_val(6), 3);
+        // ST R6 mem[PC + 1]
+        // instr: 0b0011_110_000000001
+        vm.st(0b0011110000000001);
+        // LD R5 mem[PC + 1]
+        // instr: 0b0010_101_000000001
+        vm.ld(0b0010101000000001);
+        assert_eq!(vm.registers.get_val(5), 3);
     }
 
     #[test]
-    fn test_ldi() {
+    fn test_ldi_sti() {
         // LDI (Load Indirect)
         // 15-12: 1010, 11-9: DR, 8-0: PCOffset9
         // DR = mem[mem[PC + sign_ext(PCOffset9)]]
+        // STI (Store Indirect)
+        // 15-12: 1011, 11-9: SR, 8-0: PCOffset9
+        // mem[mem[PC + sign_ext(PCOffset9)]] = SR;
     }
     #[test]
-    fn test_ldr() {
+    fn test_ldr_str() {
         // LDR (Load Base+Offset)
         // 15-12: 0110, 11-9: DR, 8-6: BaseR, 5-0: Offset6
         // DR = mem[BaseR + sign_ext(Offset6)], set cond codes
+        // STR (Store Base + Offset)
+        // 15-12: 1011, 11-9: SR, 8-6: BaseR, 5-0: Offset6
+        // mem[BaseR + sign_ext(Offset6)] = SR;
     }
 
     #[test]
@@ -471,27 +480,15 @@ mod tests {
         // NOT
         // 15-12: 1001, 11-9: dr, 8-6: SR, 5-0: 1
         // bitwise complement as 2's complement int, set cond codes
-    }
-
-    #[test]
-    fn test_st() {
-        // ST (Store)
-        // 15-12: 0011, 11-9: SR, 8-0: PCOffset9
-        // mem[PC + sign_ext(PCOffset9)] = SR
-    }
-
-    #[test]
-    fn test_sti() {
-        // STI (Store Indirect)
-        // 15-12: 1011, 11-9: SR, 8-0: PCOffset9
-        // mem[mem[PC + sign_ext(PCOffset9)]] = SR;
-    }
-
-    #[test]
-    fn test_str() {
-        // STR (Store Base + Offset)
-        // 15-12: 1011, 11-9: SR, 8-6: BaseR, 5-0: Offset6
-        // mem[BaseR + sign_ext(Offset6)] = SR;
+        let mut vm = VM::new();
+        // ADD R5 R5 3
+        vm.add(0b0001101101100011);
+        assert_eq!(vm.registers.get_val(5), 3);
+        // NOT R1 R4
+        // instr: 0b1001_001_101_111111
+        vm.not(0b1001001101111111);
+        // NOT 0b0000_0101 -> 0b1111_1100(sign_ext to 16 bits)
+        assert_eq!(vm.registers.get_val(1), 65532);
     }
 
     #[test]
